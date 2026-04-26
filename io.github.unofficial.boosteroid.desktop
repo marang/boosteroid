@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Boosteroid
-Comment=Boosteroid cloud gaming client
-Exec=boosteroid-flatpak
-Icon=io.github.unofficial.boosteroid
-Terminal=false
-Categories=Game;Network;
-StartupNotify=true

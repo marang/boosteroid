@@ -1,25 +1,27 @@
-# Boosteroid Flatpak (Unofficial)
+# Boosteroid Flatpak (Community/Unofficial)
 
 This repo contains a local Flatpak packaging for the proprietary Boosteroid Linux client.
 
 ## What it does
 
-- Builds app metadata/wrapper as Flatpak app `io.github.unofficial.boosteroid`.
+- Builds app metadata/wrapper as Flatpak app `io.github.marang.boosteroid`.
 - Downloads Boosteroid's official `.deb` during install (`extra-data`).
 - Extracts payload into `/app/extra` and launches the original binary.
 
 ## Build and install locally
 
+Source: https://github.com/marang/boosteroid
+
 ```bash
 cd ~/Dev/boosteroid-flatpak
 flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
-flatpak-builder --user --install --force-clean build-dir org.boosteroid.Boosteroid.yml
+flatpak-builder --user --install --force-clean build-dir io.github.marang.boosteroid.yml
 ```
 
 Run:
 
 ```bash
-flatpak run io.github.unofficial.boosteroid
+flatpak run io.github.marang.boosteroid
 ```
 
 ## One-step reliable sync

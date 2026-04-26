@@ -1,4 +1,4 @@
-app-id: io.github.unofficial.boosteroid
+app-id: io.github.marang.boosteroid
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
@@ -28,9 +28,9 @@ modules:
     buildsystem: simple
     build-commands:
       - install -D -m 0755 boosteroid-wrapper.sh /app/bin/boosteroid-flatpak
-      - install -D -m 0644 io.github.unofficial.boosteroid.desktop /app/share/applications/io.github.unofficial.boosteroid.desktop
-      - install -D -m 0644 io.github.unofficial.boosteroid.metainfo.xml /app/share/metainfo/io.github.unofficial.boosteroid.metainfo.xml
-      - install -D -m 0644 io.github.unofficial.boosteroid.svg /app/share/icons/hicolor/scalable/apps/io.github.unofficial.boosteroid.svg
+      - install -D -m 0644 io.github.marang.boosteroid.desktop /app/share/applications/io.github.marang.boosteroid.desktop
+      - install -D -m 0644 io.github.marang.boosteroid.metainfo.xml /app/share/metainfo/io.github.marang.boosteroid.metainfo.xml
+      - install -D -m 0644 io.github.marang.boosteroid.svg /app/share/icons/hicolor/scalable/apps/io.github.marang.boosteroid.svg
 
       # Download proprietary .deb at install time, then extract it into /app/extra.
       - install -d /app/extra
@@ -39,11 +39,11 @@ modules:
       - type: file
         path: boosteroid-wrapper.sh
       - type: file
-        path: io.github.unofficial.boosteroid.desktop
+        path: io.github.marang.boosteroid.desktop
       - type: file
-        path: io.github.unofficial.boosteroid.metainfo.xml
+        path: io.github.marang.boosteroid.metainfo.xml
       - type: file
-        path: io.github.unofficial.boosteroid.svg
+        path: io.github.marang.boosteroid.svg
       - type: script
         dest-filename: apply_extra
         commands:

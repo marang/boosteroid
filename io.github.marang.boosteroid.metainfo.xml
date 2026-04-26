@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.unofficial.boosteroid</id>
+  <id>io.github.marang.boosteroid</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Proprietary</project_license>
-  <name>Boosteroid</name>
-  <summary>Cloud gaming client for Boosteroid</summary>
+  <name>Boosteroid (unofficial/community)</name>
+  <summary>Unofficial community Flatpak wrapper for Boosteroid</summary>
   <description>
-    <p>Unofficial Flatpak packaging for the proprietary Boosteroid Linux client.</p>
+    <p>Unofficial community Flatpak packaging for the proprietary Boosteroid Linux client.</p>
     <p>The application binary is downloaded from boosteroid.com during installation via Flatpak extra-data.</p>
   </description>
-  <launchable type="desktop-id">io.github.unofficial.boosteroid.desktop</launchable>
+  <launchable type="desktop-id">io.github.marang.boosteroid.desktop</launchable>
   <url type="homepage">https://boosteroid.com/</url>
+  <url type="vcs-browser">https://github.com/marang/boosteroid</url>
   <content_rating type="oars-1.1"/>
 </component>

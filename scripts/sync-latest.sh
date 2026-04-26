@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-MANIFEST="${1:-org.boosteroid.Boosteroid.yml}"
+MANIFEST="${1:-io.github.marang.boosteroid.yml}"
 BUILD_DIR="${2:-build-dir}"
-APP_ID="io.github.unofficial.boosteroid"
+APP_ID="io.github.marang.boosteroid"
 URL="https://boosteroid.com/linux/installer/boosteroid-install-x64.deb"
 UA="Mozilla/5.0"
 
