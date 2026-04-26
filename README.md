@@ -14,7 +14,7 @@ Source: https://github.com/marang/boosteroid
 
 ```bash
 cd ~/Dev/boosteroid-flatpak
-flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+flatpak install --user -y flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 flatpak-builder --user --install --force-clean build-dir io.github.marang.boosteroid.yml
 ```
 
