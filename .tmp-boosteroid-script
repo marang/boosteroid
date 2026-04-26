@@ -1,0 +1,328 @@
+#!/bin/sh
+
+set -eu
+
+OUTPUT=${OUTPUT:-}
+TARGET_MODE=${TARGET_MODE:-auto}
+TARGET_SCALE=${TARGET_SCALE:-1}
+TARGET_SCALE_FILTER=${TARGET_SCALE_FILTER:-linear}
+PROFILE_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/google-chrome-boosteroid"
+CHROME_BIN=${CHROME_BIN:-google-chrome-beta}
+USE_NVIDIA_GPU=${USE_NVIDIA_GPU:-0}
+PREFER_PERF_ON_4K=${PREFER_PERF_ON_4K:-1}
+CLIENT_APP_ID=${CLIENT_APP_ID:-org.boosteroid.Boosteroid}
+TRY_NATIVE_CLIENT=${TRY_NATIVE_CLIENT:-1}
+ALLOW_WEB_FALLBACK=${ALLOW_WEB_FALLBACK:-1}
+ENABLE_UPDATE_CHECK=${ENABLE_UPDATE_CHECK:-1}
+
+usage() {
+    cat <<USAGE
+Usage: $0 [options]
+  --output=NAME        Sway output (default: auto pick external/focused)
+  --mode=WxH@Hz|auto   Target mode (default: $TARGET_MODE)
+  --scale=S            Target scale (default: $TARGET_SCALE)
+  --scale-filter=F     linear|nearest (default: $TARGET_SCALE_FILTER)
+  --prefer-native-4k   Keep native 4K mode instead of 1440p performance mode
+  --client-only        Use native Flatpak client only (no web fallback)
+  --web-only           Skip native client and start web kiosk directly
+  --no-update-check    Skip automatic Flatpak update check before launch
+  --prefer-nvidia      Force PRIME render offload to NVIDIA (if available)
+  --chrome-bin=PATH    Browser binary (default: $CHROME_BIN)
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output=*)
+            OUTPUT=${1#*=}
+            ;;
+        --mode=*)
+            TARGET_MODE=${1#*=}
+            ;;
+        --scale=*)
+            TARGET_SCALE=${1#*=}
+            ;;
+        --scale-filter=*)
+            TARGET_SCALE_FILTER=${1#*=}
+            ;;
+        --prefer-native-4k)
+            PREFER_PERF_ON_4K=0
+            ;;
+        --client-only)
+            TRY_NATIVE_CLIENT=1
+            ALLOW_WEB_FALLBACK=0
+            ;;
+        --web-only)
+            TRY_NATIVE_CLIENT=0
+            ALLOW_WEB_FALLBACK=1
+            ;;
+        --no-update-check)
+            ENABLE_UPDATE_CHECK=0
+            ;;
+        --prefer-nvidia)
+            USE_NVIDIA_GPU=1
+            ;;
+        --chrome-bin=*)
+            CHROME_BIN=${1#*=}
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf "Unknown option: %s\n" "$1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+if ! swaymsg -t get_outputs >/dev/null 2>&1; then
+    echo "swaymsg cannot talk to Sway (SWAYSOCK missing/invalid)." >&2
+    exit 1
+fi
+
+is_external_output() {
+    case "$1" in
+        eDP-*|LVDS-*|DSI-*)
+            return 1
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+}
+
+if [ -z "$OUTPUT" ]; then
+    OUTPUTS=$(swaymsg -t get_outputs | jq -r '.[] | select(.active==true) | .name')
+    set -- $OUTPUTS
+
+    if [ $# -eq 0 ]; then
+        echo "No outputs detected via swaymsg." >&2
+        exit 1
+    fi
+
+    if [ $# -eq 1 ]; then
+        OUTPUT=$1
+    else
+        EXTERNAL_COUNT=0
+        EXTERNAL_NAME=
+        for name in "$@"; do
+            if is_external_output "$name"; then
+                EXTERNAL_COUNT=$((EXTERNAL_COUNT + 1))
+                EXTERNAL_NAME=$name
+            fi
+        done
+
+        if [ "$EXTERNAL_COUNT" -eq 1 ]; then
+            OUTPUT=$EXTERNAL_NAME
+        else
+            FOCUSED_OUTPUT=$(swaymsg -t get_outputs -r | jq -r '.[] | select(.focused==true) | .name' | head -n 1)
+            if [ -n "$FOCUSED_OUTPUT" ]; then
+                OUTPUT=$FOCUSED_OUTPUT
+            else
+                OUTPUT=$1
+            fi
+        fi
+    fi
+fi
+
+if ! swaymsg -t get_outputs | jq -e '.[] | select(.name=="'"$OUTPUT"'")' >/dev/null; then
+    echo "Output $OUTPUT not found in Sway." >&2
+    exit 1
+fi
+
+FOCUSED_ID=$(swaymsg -t get_tree | jq -r '.. | select(.focused? == true) | .id')
+
+ORIG_STATE=$(swaymsg -t get_outputs -r | jq -r '
+  .[] | select(.name=="'"$OUTPUT"'") |
+  [
+    (.current_mode.width|tostring) + "x" + (.current_mode.height|tostring) + "@" + (((.current_mode.refresh + 500)/1000)|floor|tostring) + "Hz",
+    (.scale|tostring),
+    .scale_filter,
+    (.max_render_time|tostring),
+    (.current_mode.width|tostring),
+    (.current_mode.height|tostring)
+  ] | @tsv
+')
+
+ORIG_MODE=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $1}')
+ORIG_SCALE=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $2}')
+ORIG_SCALE_FILTER=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $3}')
+ORIG_MAX_RENDER_TIME=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $4}')
+ORIG_WIDTH=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $5}')
+ORIG_HEIGHT=$(printf '%s' "$ORIG_STATE" | awk -F'\t' '{print $6}')
+
+cleanup() {
+    if [ "$ORIG_MAX_RENDER_TIME" = "0" ]; then
+        swaymsg output "$OUTPUT" mode "$ORIG_MODE" scale "$ORIG_SCALE" scale_filter "$ORIG_SCALE_FILTER" max_render_time off >/dev/null
+    else
+        swaymsg output "$OUTPUT" mode "$ORIG_MODE" scale "$ORIG_SCALE" scale_filter "$ORIG_SCALE_FILTER" max_render_time "$ORIG_MAX_RENDER_TIME" >/dev/null
+    fi
+}
+trap cleanup EXIT INT TERM HUP
+
+resolve_web_mode() {
+    if [ "$TARGET_MODE" != "auto" ]; then
+        printf '%s\n' "$TARGET_MODE"
+        return 0
+    fi
+
+    WEB_MODE=$ORIG_MODE
+    if [ "$PREFER_PERF_ON_4K" -eq 1 ] && [ "$ORIG_WIDTH" -ge 3800 ] && [ "$ORIG_HEIGHT" -ge 2100 ]; then
+        if swaymsg -t get_outputs -r | jq -e '.[] | select(.name=="'"$OUTPUT"'") | .modes[] | select(.width==2560 and .height==1440 and .refresh>=59000 and .refresh<=61000)' >/dev/null; then
+            WEB_MODE=2560x1440@60Hz
+            echo "Using web performance mode on $OUTPUT: $WEB_MODE (smoother than native 4K)." >&2
+        fi
+    fi
+    printf '%s\n' "$WEB_MODE"
+}
+
+resolve_client_mode() {
+    if [ "$TARGET_MODE" = "auto" ]; then
+        printf '%s\n' "$ORIG_MODE"
+    else
+        printf '%s\n' "$TARGET_MODE"
+    fi
+}
+
+apply_output_profile() {
+    MODE_TO_SET=$1
+    swaymsg output "$OUTPUT" mode "$MODE_TO_SET" >/dev/null
+    swaymsg output "$OUTPUT" scale "$TARGET_SCALE" >/dev/null
+    swaymsg output "$OUTPUT" max_render_time off >/dev/null
+    swaymsg output "$OUTPUT" scale_filter "$TARGET_SCALE_FILTER" >/dev/null
+    swaymsg output "$OUTPUT" adaptive_sync on >/dev/null || true
+}
+
+run_native_update_check() {
+    if [ "$ENABLE_UPDATE_CHECK" -ne 1 ]; then
+        return 0
+    fi
+    if ! command -v flatpak >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! flatpak info "$CLIENT_APP_ID" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "Checking updates for $CLIENT_APP_ID..." >&2
+    if flatpak update --user --noninteractive -y "$CLIENT_APP_ID" >/dev/null 2>&1; then
+        echo "Update check finished." >&2
+    else
+        echo "Update check failed (continuing launch)." >&2
+    fi
+}
+
+is_flatpak_app_running() {
+    flatpak ps --columns=application 2>/dev/null | grep -Fxq "$1"
+}
+
+wait_for_detached_native_exit() {
+    APP_ID=$1
+    APPEAR_TIMEOUT=${2:-15}
+    elapsed=0
+
+    while [ "$elapsed" -lt "$APPEAR_TIMEOUT" ]; do
+        if is_flatpak_app_running "$APP_ID"; then
+            while is_flatpak_app_running "$APP_ID"; do
+                sleep 1
+            done
+            return 0
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+
+    return 1
+}
+
+launch_native_client() {
+    flatpak run "$CLIENT_APP_ID" &
+    RUN_PID=$!
+    sleep 1
+
+    if kill -0 "$RUN_PID" 2>/dev/null; then
+        wait "$RUN_PID"
+        return $?
+    fi
+
+    wait "$RUN_PID"
+    RUN_RC=$?
+    if [ "$RUN_RC" -ne 0 ]; then
+        return "$RUN_RC"
+    fi
+
+    echo "Native launcher exited quickly; waiting for detached sandbox instance..." >&2
+    if wait_for_detached_native_exit "$CLIENT_APP_ID" 20; then
+        return 0
+    fi
+
+    echo "No detached native instance detected for $CLIENT_APP_ID." >&2
+    return 1
+}
+
+if [ -n "$FOCUSED_ID" ]; then
+    swaymsg "[con_id=$FOCUSED_ID]" move container to output "$OUTPUT" >/dev/null
+fi
+swaymsg focus output "$OUTPUT" >/dev/null
+
+sleep 0.2
+
+if [ "$TRY_NATIVE_CLIENT" -eq 1 ]; then
+    if flatpak info "$CLIENT_APP_ID" >/dev/null 2>&1; then
+        run_native_update_check
+        CLIENT_MODE=$(resolve_client_mode)
+        echo "Launching native Boosteroid client on $OUTPUT (mode $CLIENT_MODE, scale $TARGET_SCALE)." >&2
+        apply_output_profile "$CLIENT_MODE"
+        if launch_native_client; then
+            exit 0
+        fi
+        if [ "$ALLOW_WEB_FALLBACK" -ne 1 ]; then
+            echo "Native client failed and --client-only is active." >&2
+            exit 1
+        fi
+        echo "Native client exited with error. Falling back to web kiosk..." >&2
+    else
+        if [ "$ALLOW_WEB_FALLBACK" -ne 1 ]; then
+            echo "Native client $CLIENT_APP_ID is not installed and --client-only is active." >&2
+            exit 1
+        fi
+        echo "Native client not installed. Falling back to web kiosk..." >&2
+    fi
+fi
+
+if [ "$ALLOW_WEB_FALLBACK" -ne 1 ]; then
+    echo "Nothing to launch: web fallback disabled." >&2
+    exit 1
+fi
+
+WEB_MODE=$(resolve_web_mode)
+echo "Launching web kiosk on $OUTPUT (mode $WEB_MODE, scale $TARGET_SCALE)." >&2
+apply_output_profile "$WEB_MODE"
+
+mkdir -p "$PROFILE_DIR"
+pkill -f -- "$CHROME_BIN.*$PROFILE_DIR" 2>/dev/null || true
+
+if [ "$USE_NVIDIA_GPU" -eq 1 ]; then
+    export __NV_PRIME_RENDER_OFFLOAD=1
+    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+    export __VK_LAYER_NV_optimus=NVIDIA_only
+    export DRI_PRIME=1
+fi
+
+"$CHROME_BIN" \
+  --ozone-platform=wayland \
+  --enable-features=UseOzonePlatform,VaapiVideoDecoder \
+  --enable-gpu-rasterization \
+  --enable-zero-copy \
+  --ignore-gpu-blocklist \
+  --enable-accelerated-video-decode \
+  --kiosk \
+  --new-window \
+  --user-data-dir="$PROFILE_DIR" \
+  --app="https://cloud.boosteroid.com" &
+
+CHROME_PID=$!
+wait "$CHROME_PID"
