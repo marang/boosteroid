@@ -36,6 +36,27 @@ cd ~/Dev/boosteroid-flatpak
 ./scripts/sync-latest.sh
 ```
 
+For automated update checks (CI, cron, timer), use:
+
+```bash
+./scripts/sync-latest.sh --check --skip-reinstall
+```
+
+This updates only `io.github.marang.boosteroid.yml` when hash/size changed and exits without rebuilding/reinstalling.  
+Use your preferred schedule (GitHub Actions, cron, systemd timer), then commit the generated manifest change and open/update the PR in Flathub.
+
+### GitHub Actions automation (recommended)
+
+This repository includes `.github/workflows/update-flathub-manifest.yml` which can:
+
+- run on a daily schedule or manually,
+- run `./scripts/sync-latest.sh --check --skip-reinstall`,
+- copy updated manifest data to `marang/flathub` branch `new-pr` and push it.
+
+To enable it you need a repository secret in this repo:
+
+- `FLATHUB_TOKEN` with write access to `marang/flathub` (for branch `new-pr`).
+
 ## Notes for Flathub submission
 
 - App is proprietary, so `extra-data` is the correct model.
