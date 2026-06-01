@@ -53,10 +53,15 @@ modules:
             cd /app/extra
             # File is placed by Flatpak's extra-data mechanism.
             test -f boosteroid-install-x64.deb
-            bsdtar -xOf boosteroid-install-x64.deb data.tar.bz2 | tar -xjf -
+            data_archive=$(bsdtar -tf boosteroid-install-x64.deb | awk '/^data[.]tar([.].+)?$/ { print; exit }')
+            if [ -z "$data_archive" ]; then
+              echo "No data.tar.* payload found in boosteroid-install-x64.deb" >&2
+              exit 1
+            fi
+            bsdtar -xOf boosteroid-install-x64.deb "$data_archive" | bsdtar -xf -
             rm -f boosteroid-install-x64.deb
       - type: extra-data
         filename: boosteroid-install-x64.deb
         url: https://boosteroid.com/linux/installer/boosteroid-install-x64.deb
-        size: 78920770
-        sha256: 9194e83bd6292c6536be84fa67db05c22c0e47534f2de1226ecf9b740adb3a7c
+        size: 71235386
+        sha256: 197f651c48e18ad7dd0a252f5de52956bb639a855b2a5bc6d427dc8d9c19f112

@@ -129,12 +129,16 @@ if [ "$CHECK_ONLY" -eq 1 ] || [ "$SKIP_REINSTALL" -eq 1 ]; then
   exit 0
 fi
 
-if [ "$CHANGED" -eq 0 ]; then
+if [ "$CHANGED" -eq 0 ] && flatpak info --user "$APP_ID" >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "Uninstalling existing user installation (if present): $APP_ID"
-flatpak uninstall --user -y "$APP_ID" || true
+if flatpak info --user "$APP_ID" >/dev/null 2>&1; then
+  echo "Uninstalling existing user installation (if present): $APP_ID"
+  flatpak uninstall --user -y "$APP_ID" || true
+else
+  echo "No existing user installation found for $APP_ID; installing from current manifest."
+fi
 
 echo "Reinstalling with a clean build dir."
 flatpak-builder --user --install --force-clean "$BUILD_DIR" "$MANIFEST"
